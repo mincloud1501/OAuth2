@@ -1,0 +1,47 @@
+<html>
+
+<body>
+    <input type="button" id="authBtn" value="checking..." onclick="
+            var gAuth = gapi.auth2.getAuthInstance();
+            if(this.value === 'Login'){
+                gAuth.signIn().then(function(){
+                    refreshAuthStatus();
+                });
+            } else {
+                gAuth.signOut().then(function(){
+                    refreshAuthStatus();
+                });
+            }
+        ">
+    <script>
+        function refreshAuthStatus() {
+            var gAuth = gapi.auth2.getAuthInstance();
+            var isLogin = gAuth.isSignedIn.get();
+            console.log('isLogin', isLogin);
+            if (isLogin) {
+                document.querySelector('#authBtn').value = 'Logout';
+            } else {
+                document.querySelector('#authBtn').value = 'Login';
+            }
+        }
+
+        function init() {
+            console.log('init');    
+            gapi.load('auth2', function () {
+                console.log('auth2');
+                var gauth = gapi.auth2.init({
+                    client_id: 'xxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com'
+                });
+                gauth.then(function () {
+                    console.log('auth init success');
+                    refreshAuthStatus();
+                }, function () {
+            onsole.log('auth fail');
+                })
+            });
+        }
+    </script>
+    <script src="https://apis.google.com/js/platform.js?onload=init" async defer></script>
+</body>
+
+</html>

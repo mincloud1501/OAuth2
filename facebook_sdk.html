@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+
+<body>
+    <div id="welcome"></div>
+    <div id="notice">
+        <input type="button" id="authBtn" value="checking..." onclick="
+            if(this.value === 'Login'){
+                FB.login(function(response){
+                    refreshAuthStatus();
+                }, {scope:'email'});
+            } else {
+                FB.logout(function(response){
+                    refreshAuthStatus();
+                });
+            }
+        ">
+    </div>
+    <script>
+        function refreshAuthStatus() {
+            FB.getLoginStatus(function (response) {
+                console.log('FB.getLoginStatus', response);
+                if (response.status === 'connected') {
+                    FB.api('/me', function (response) {
+                        document.querySelector('#authBtn').value = 'Logout';
+                        document.querySelector('#welcome').innerHTML = 'Welcome, ' + response.name;
+                    })
+                } else {
+                    document.querySelector('#authBtn').value = 'Login';
+                    document.querySelector('#welcome').innerHTML = '';
+                }
+            });
+        }
+        window.fbAsyncInit = function () {
+            FB.init({
+                appId: 'xxxxxxxxxxxxxxx',
+                autoLogAppEvents: true,
+                xfbml: true,
+                version: 'v3.1'
+            });
+
+            console.log('Init');
+            refreshAuthStatus();
+
+        };
+
+        (function (d, s, id) {
+            var js, fjs = d.getElementsByTagName(s)[0];
+            if (d.getElementById(id)) {
+                return;
+            }
+            js = d.createElement(s);
+            js.id = id;
+            js.src = "https://connect.facebook.net/en_US/sdk.js";
+            fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'facebook-jssdk'));
+    </script>
+</body>
+
+</html>
