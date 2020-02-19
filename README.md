@@ -53,17 +53,134 @@ OAuth2 는 OAuth 프로토콜의 버전 2
 - 클라이언트가 다른 사용자 대신 특정 리소스에 접근을 요청할 때 사용
 - 리스소 접근을 위한 사용자 명과 비밀번호, 권한 서버에 요청해서 받은 권한 코드를 함께 활용하여 리소스에 대한 엑세스 토큰을 받는 방식
 
+![authorization_code_grant_type](images/authorization_code_grant_type.png)
+
+[AuthorizationServerConfig]
+```java
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+        .inMemory() // 메모리에 저장
+        .withClient("client") // 클라이언트 이름을 작성
+        .secret("{bcrypt}")  // 시크릿을 작성
+        .redirectUris("http://localhost:9000/callback") // 리다이렉트 URI을 설정
+        .authorizedGrantTypes("authorization_code") // Authorization Code Grant 타입을 설정
+        .scopes("read_profile"); // scope 지정
+}
+```
+
+[ResourceServerConfig/SecurityConfig]
+```java
+@Configuration
+@EnableResourceServer
+public class ResourceServerConfig extends ResourceServerConfigurerAdapter {
+    
+    @Override
+    public void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests().anyRequest().authenticated().and()
+            .requestMatchers().antMatchers("/api/**");
+    }
+}
+
+@EnableWebSecurity
+@AllArgsConstructor
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        //@formatter:off
+        http
+            .csrf().disable()
+            .authorizeRequests().anyRequest().authenticated().and()
+            .formLogin().and()
+            .httpBasic();
+        //@formatter:on
+    }
+}
+```
+
+
 `√ Implicit Grant Type` : 암시적 승인
 
-- 권한 부여 코드 승인 타입과 다르게 권한 코드 교환 단계 없이 엑세스 토큰을 즉시 반환받아 이를 인증에 이용하는 방식
+- 권한 부여 코드 승인 타입과 다르게 권한 코드 교환 단계 없이 엑세스 토큰을 즉시 반환받아 이를 인증에 이용하는 방식으로 Refresh Token을 발급하지 않는다.
+
+![implicit_grant_type](images/implicit_grant_type.png)
+
+```java
+@Override
+public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+    clients
+        .inMemory()
+        .withClient("client")
+        .secret("{bcrypt}")  // password
+        .redirectUris("http://localhost:9000/callback")
+        .authorizedGrantTypes("authorization_code", "implicit") // implicit 추가하여 mplicit Grant 방식 설정
+        .accessTokenValiditySeconds(120)
+        .refreshTokenValiditySeconds(240)
+        .scopes("read_profile");
+}
+```
 
 `√ Resource Owner Password Credentials Grant Type` : 리소스 소유자 암호 자격 증명 타입
 
 - 클라이언트가 암호를 사용하여 엑세스 토큰에 대한 사용자의 자격 증명을 교환하는 방식
 
+![resource_owner_password_credentials_grant_type](images/resource_owner_password_credentials_grant_type.png)
+
+```java
+public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
+    private final AuthenticationManager authenticationManager;
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+            .inMemory()
+            .withClient("client")
+            .secret("{bcrypt}")  // password
+            .redirectUris("http://localhost:9000/callback")
+            .authorizedGrantTypes("authorization_code", "implicit", "password") // password 타입 추가
+            .accessTokenValiditySeconds(120) //  access token 만료시간
+            .refreshTokenValiditySeconds(240) // refresh token 만료시간
+            .scopes("read_profile");
+    }
+
+
+    // authenticationManager 빈등록을 해주고 의존성 주입을 받아
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) {
+        //@formatter:off
+        endpoints
+            .authenticationManager(authenticationManager) // Bean 등록은 SecurityConfig 에서 등록
+        ;
+        //@formatter:on
+    }
+}
+```
+
 `√ Client Credentials Grant Type` : 클라이언트 자격 증명 타입
 
 - 클라이언트가 컨텍스트 외부에서 액세스 토큰을 얻어 특정 리소스에 접근을 요청할 때 사용하는 방식
+
+![client_credentials_grant_type](images/client_credentials_grant_type.png)
+
+```java
+@Override
+public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+    clients
+        .inMemory()
+        .withClient("client")
+        .secret("{bcrypt}")  // password
+        .redirectUris("http://localhost:9000/callback")
+        .authorizedGrantTypes("authorization_code", "implicit", "password", "client_credentials") // client_credentials 추가
+        .accessTokenValiditySeconds(120)
+        .refreshTokenValiditySeconds(240)
+        .scopes("read_profile");
+}
+```
 
 ---
 ## Prerequisites for running
