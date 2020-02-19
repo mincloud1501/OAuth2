@@ -48,63 +48,142 @@ OAuth2 는 OAuth 프로토콜의 버전 2
 - Access Token이 만료되었을 때 갱신하기 위해 권한 부여 서버로 전송
 
 ## 승인 방식
-`√ Authorization Code Grant Type` : 권한 부여 코드 승인 타입
+
+### `√ Authorization Code Grant Type` : 권한 부여 코드 승인 타입
 
 - 클라이언트가 다른 사용자 대신 특정 리소스에 접근을 요청할 때 사용
 - 리스소 접근을 위한 사용자 명과 비밀번호, 권한 서버에 요청해서 받은 권한 코드를 함께 활용하여 리소스에 대한 엑세스 토큰을 받는 방식
 
 ![authorization_code_grant_type](images/authorization_code_grant_type.png)
 
-[AuthorizationServerConfig]
+[Add Dependencies]
 ```java
-@Configuration
-@EnableAuthorizationServer
-public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
-
-    @Override
-    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-        clients
-        .inMemory() // 메모리에 저장
-        .withClient("client") // 클라이언트 이름을 작성
-        .secret("{bcrypt}")  // 시크릿을 작성
-        .redirectUris("http://localhost:9000/callback") // 리다이렉트 URI을 설정
-        .authorizedGrantTypes("authorization_code") // Authorization Code Grant 타입을 설정
-        .scopes("read_profile"); // scope 지정
+dependencies {
+    compile('org.springframework.boot:spring-boot-starter-web')
+    compile('org.springframework.boot:spring-boot-starter-security')
+    compile('org.springframework.boot:spring-boot-starter-thymeleaf')
+    compile('org.springframework.security.oauth:spring-security-oauth2')
+    compile('org.projectlombok:lombok')
 }
 ```
 
-[ResourceServerConfig/SecurityConfig]
+[OAuthASApplication]
+```java
+@SpringBootApplication
+public class OAuthASApplication {
+
+    private static final Logger log = LoggerFactory.getLogger(OAuthASApplication.class);
+
+    public static void main(String[] args) {
+        SpringApplication.run(OAuthASApplication.class, args);
+    }
+}
+```
+
+[OAuth2AuthorizationServerConfig]
+```java
+@Configuration
+@EnableAuthorizationServer
+public class OAuth2AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+        .inMemory()
+        .withClient("client")
+        .secret("{noop}secret") // secret
+        .redirectUris("http://localhost:8765/display/displays/11111") // callback address 지정, MSA project의 display 지정
+        .authorizedGrantTypes("authorization_code")
+        .scopes("read_profile");
+    }
+}
+```
+
+[ResourceServerConfig]
 ```java
 @Configuration
 @EnableResourceServer
 public class ResourceServerConfig extends ResourceServerConfigurerAdapter {
-    
     @Override
     public void configure(HttpSecurity http) throws Exception {
-        http.authorizeRequests().anyRequest().authenticated().and()
-            .requestMatchers().antMatchers("/api/**");
-    }
-}
-
-@EnableWebSecurity
-@AllArgsConstructor
-public class SecurityConfig extends WebSecurityConfigurerAdapter {
-
-    @Override
-    protected void configure(HttpSecurity http) throws Exception {
-        //@formatter:off
         http
-            .csrf().disable()
-            .authorizeRequests().anyRequest().authenticated().and()
-            .formLogin().and()
-            .httpBasic();
-        //@formatter:on
+            .authorizeRequests().anyRequest().authenticated()
+            .and()
+            .requestMatchers().antMatchers("/api/**");
     }
 }
 ```
 
+- passwordEncoder()와 userDetailsService()에서 user를 등록. password는 암호를 암호화하여 저장하기 위해 추가된 코드. 암호화를 하지 않는다면 {noop}를 앞에 추가하여 암호화를 하지 않는다고 알려주어야 한다. Spring Security 5.x 이상에서 PasswordEncoder 사용이 의무화됨.
+- makeAuthorizationRequestHeader()는 Restful Client에서 호출하기 위한 인증헤더를 만들어주기 위해서 삽입한 코드. (실제 운영 시에는 필요 없는 코드)
 
-`√ Implicit Grant Type` : 암시적 승인
+[WebSecurityConfig]
+```java
+import lombok.AllArgsConstructor;
+
+@Configuration
+@EnableWebSecurity
+@AllArgsConstructor
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+ 
+    private static final Logger log = LoggerFactory.getLogger(WebSecurityConfig.class);
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+            .csrf().disable()
+            .authorizeRequests().anyRequest().authenticated()
+            .and()
+            .formLogin()
+            .and()
+            .httpBasic();
+            
+        makeAuthorizationRequestHeader();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        PasswordEncoder encoder = passwordEncoder();
+        String password = encoder.encode("pass");
+        log.debug("PasswordEncoder password : [{}] ", password);
+        log.debug("PasswordEncoder password : [{}] ", encoder.encode("secret"));
+
+        InMemoryUserDetailsManager manager = new InMemoryUserDetailsManager();
+        manager.createUser(User.withUsername("user").password(password).roles("USER").build());
+        manager.createUser(User.withUsername("admin").password("{noop}pass").roles("USER", "ADMIN").build());
+        return manager;
+    }
+
+    private static void makeAuthorizationRequestHeader() {
+        String oauthClientId = "client";
+        String oauthClientSecret = "secret";
+
+        Encoder encoder = Base64.getEncoder();
+        try {
+            String toEncodeString = String.format("%s:%s", oauthClientId, oauthClientSecret);
+            String authorizationRequestHeader = "Basic " + encoder.encodeToString(toEncodeString.getBytes("UTF-8"));
+            log.debug("AuthorizationRequestHeader : [{}] ", authorizationRequestHeader);
+        } catch (UnsupportedEncodingException e) {
+            log.error(e.getMessage(), e);
+        }
+    }
+}
+```
+
+#### Run
+
+1. `http://localhost:8769/oauth/authorize?response_type=code&client_id=client&redirect_uri=http%3A%2F%2Flocalhost%3A9000%2Fcallback&scope=read_profile`
+2. 자동으로 Spring Security의 기본 인증 페이지로 redirect됨.
+3. WebSecurityConfig에서 지정한 사용자 `user/pass`로 인증 처리됨.
+4. Client ID에 대한 접근을 Authorize button을 눌러 승인하면 지정한 callback address로 code를 반환. `http://localhost:8765/display/displays/11111/callback?code=3blOsl`
+
+---
+
+### `√ Implicit Grant Type` : 암시적 승인
 
 - 권한 부여 코드 승인 타입과 다르게 권한 코드 교환 단계 없이 엑세스 토큰을 즉시 반환받아 이를 인증에 이용하는 방식으로 Refresh Token을 발급하지 않는다.
 
@@ -125,7 +204,7 @@ public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
 }
 ```
 
-`√ Resource Owner Password Credentials Grant Type` : 리소스 소유자 암호 자격 증명 타입
+### `√ Resource Owner Password Credentials Grant Type` : 리소스 소유자 암호 자격 증명 타입
 
 - 클라이언트가 암호를 사용하여 엑세스 토큰에 대한 사용자의 자격 증명을 교환하는 방식
 
@@ -161,7 +240,7 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
 }
 ```
 
-`√ Client Credentials Grant Type` : 클라이언트 자격 증명 타입
+### `√ Client Credentials Grant Type` : 클라이언트 자격 증명 타입
 
 - 클라이언트가 컨텍스트 외부에서 액세스 토큰을 얻어 특정 리소스에 접근을 요청할 때 사용하는 방식
 
@@ -183,6 +262,7 @@ public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
 ```
 
 ---
+
 ## Prerequisites for running
 - visual studio code : https://code.visualstudio.com/
 - nodejs : https://nodejs.org/en/
