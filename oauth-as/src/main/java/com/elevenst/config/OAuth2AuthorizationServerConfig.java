@@ -14,8 +14,13 @@ public class OAuth2AuthorizationServerConfig extends AuthorizationServerConfigur
             .inMemory()
             .withClient("client")
             .secret("{noop}secret") // secret
-            .redirectUris("http://localhost:8765/display/displays/11111") // callback address 지정, MSA project의 display 지정
-            .authorizedGrantTypes("authorization_code")
+            .redirectUris("http://localhost:8769/callback") // callback address 지정, MSA project의 display 지정
+            //.authorizedGrantTypes("authorization_code") // Authorization Code Grant Type
+            //.authorizedGrantTypes("authorization_code", "implicit") // Implicit Grant Type
+            //.authorizedGrantTypes("authorization_code", "implicit", "password") // Resource Owner Password Credentials Grant Type
+            .authorizedGrantTypes("authorization_code", "implicit", "password", "client_credentials") // Client Credentials Grant Type
+            .accessTokenValiditySeconds(120)
+            .refreshTokenValiditySeconds(240)
             .scopes("read_profile");
     }
 }

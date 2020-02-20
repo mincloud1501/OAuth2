@@ -176,10 +176,10 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
 #### Run
 
-1. `http://localhost:8769/oauth/authorize?response_type=code&client_id=client&redirect_uri=http%3A%2F%2Flocalhost%3A9000%2Fcallback&scope=read_profile`
+1. http://localhost:8769/oauth/authorize?response_type=code&client_id=client&redirect_uri=http%3A%2F%2Flocalhost%3A8769%2Fcallback&scope=read_profile 
 2. 자동으로 Spring Security의 기본 인증 페이지로 redirect됨.
 3. WebSecurityConfig에서 지정한 사용자 `user/pass`로 인증 처리됨.
-4. Client ID에 대한 접근을 Authorize button을 눌러 승인하면 지정한 callback address로 code를 반환. `http://localhost:8765/display/displays/11111/callback?code=3blOsl`
+4. Client ID에 대한 접근을 Authorize button을 눌러 승인하면 지정한 callback address로 code를 반환. `http://localhost:8769/callback`
 
 ---
 
@@ -190,19 +190,30 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 ![implicit_grant_type](images/implicit_grant_type.png)
 
 ```java
-@Override
-public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-    clients
-        .inMemory()
-        .withClient("client")
-        .secret("{bcrypt}")  // password
-        .redirectUris("http://localhost:9000/callback")
-        .authorizedGrantTypes("authorization_code", "implicit") // implicit 추가하여 mplicit Grant 방식 설정
-        .accessTokenValiditySeconds(120)
-        .refreshTokenValiditySeconds(240)
-        .scopes("read_profile");
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+            .inMemory()
+            .withClient("client")
+            .secret("{noop}secret") // secret
+            .redirectUris("http://localhost:8769/callback")
+            .authorizedGrantTypes("authorization_code", "implicit") // "implicit" 추가
+            .scopes("read_profile");
+    }
 }
 ```
+
+#### Run
+
+1. http://localhost:8769/oauth/authorize?response_type=token&client_id=client&redirect_uri=http%3A%2F%2Flocalhost%3A8769%2Fcallback&scope=read_profile&state=test   
+2. 자동으로 Spring Security의 기본 인증 페이지로 redirect됨.
+3. WebSecurityConfig에서 지정한 사용자 `user/pass`로 인증 처리됨.
+4. Client ID에 대한 접근을 Authorize button을 눌러 승인하면 접근 토근이 콜백주소로 바로 반환.
+   `http://localhost:8769/callback#access_token=07215b30-bfc6-4c59-a844-163e9fb387f7&token_type=bearer&state=test&expires_in=43199`
+
 
 ### `√ Resource Owner Password Credentials Grant Type` : 리소스 소유자 암호 자격 증명 타입
 
@@ -210,32 +221,44 @@ public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
 
 ![resource_owner_password_credentials_grant_type](images/resource_owner_password_credentials_grant_type.png)
 
+[AuthorizationServerConfig]
 ```java
+@Configuration
+@EnableAuthorizationServer
 public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
-    private final AuthenticationManager authenticationManager;
+    
+    @Autowired
+    private AuthenticationManager authenticationManager;
+
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+        endpoints.authenticationManager(authenticationManager);
+    }
 
     @Override
     public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
         clients
             .inMemory()
             .withClient("client")
-            .secret("{bcrypt}")  // password
+            .secret("{noop}secret") // secret
             .redirectUris("http://localhost:9000/callback")
-            .authorizedGrantTypes("authorization_code", "implicit", "password") // password 타입 추가
-            .accessTokenValiditySeconds(120) //  access token 만료시간
-            .refreshTokenValiditySeconds(240) // refresh token 만료시간
+            .authorizedGrantTypes("authorization_code", "implicit", "password") // "password" 추가
             .scopes("read_profile");
     }
+}
+```
 
+[WebSecurityConfig]
+```java
+@Configuration
+@EnableWebSecurity
+@AllArgsConstructor
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
-    // authenticationManager 빈등록을 해주고 의존성 주입을 받아
     @Override
-    public void configure(AuthorizationServerEndpointsConfigurer endpoints) {
-        //@formatter:off
-        endpoints
-            .authenticationManager(authenticationManager) // Bean 등록은 SecurityConfig 에서 등록
-        ;
-        //@formatter:on
+    @Bean // 맨 하단에 AuthenticationManager Bean 추가
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
     }
 }
 ```
@@ -247,17 +270,21 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
 ![client_credentials_grant_type](images/client_credentials_grant_type.png)
 
 ```java
-@Override
-public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
-    clients
-        .inMemory()
-        .withClient("client")
-        .secret("{bcrypt}")  // password
-        .redirectUris("http://localhost:9000/callback")
-        .authorizedGrantTypes("authorization_code", "implicit", "password", "client_credentials") // client_credentials 추가
-        .accessTokenValiditySeconds(120)
-        .refreshTokenValiditySeconds(240)
-        .scopes("read_profile");
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdapter {
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+            .inMemory()
+            .withClient("client")
+            .secret("{noop}secret") // secret
+            .redirectUris("http://localhost:9000/callback")
+            .authorizedGrantTypes("authorization_code", "implicit", "password", "client_credentials") // "client_credentials" 추가
+            .accessTokenValiditySeconds(120)
+            .refreshTokenValiditySeconds(240)
+            .scopes("read_profile");
+    }
 }
 ```
 
